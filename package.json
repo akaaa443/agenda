@@ -1,10 +1,11 @@
 {
-  "name": "@hokify/agenda",
+  "name": "@corp-ais/agenda",
   "version": "6.4.0",
   "description": "Light weight job scheduler for Node.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
     "access": "public"
   },
   "files": [
@@ -35,7 +36,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/hokify/agenda"
+    "url": "git://github.com/akaaa443/agenda"
   },
   "keywords": [
     "job",
