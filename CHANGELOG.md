@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.4.0](https://github.com/hokify/agenda/compare/v6.3.0...v6.4.0) (2026-06-15)
+
+
+### Features
+
+* add drain() for graceful shutdown - stops accepting new jobs, waits for running jobs to finish, then calls stop()
+
+
 ## [6.3.0](https://github.com/hokify/agenda/compare/v6.2.13...v6.3.0) (2022-12-09)
 
 

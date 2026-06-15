@@ -778,5 +778,93 @@ describe('Agenda', () => {
 
 			expect(unhandledRejections).to.have.length(0);
 		}).timeout(10500);
+
+		describe('drain', () => {
+			it('does nothing if agenda is not running', async () => {
+				const agenda = new Agenda({ mongo: mongoDb });
+				await agenda.ready;
+				expect(agenda.isActiveJobProcessor()).to.be.false;
+				await agenda.drain(); // should not throw
+				expect(agenda.isActiveJobProcessor()).to.be.false;
+			});
+
+			it('stops the job processor after draining', async () => {
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+				expect(globalAgenda.isActiveJobProcessor()).to.be.true;
+
+				await globalAgenda.drain();
+				expect(globalAgenda.isActiveJobProcessor()).to.be.false;
+			});
+
+			it('waits for a running job to finish before resolving', async () => {
+				let jobFinished = false;
+
+				globalAgenda.define('drain-long-job', async _job => {
+					await new Promise<void>(resolve => setTimeout(resolve, 300));
+					jobFinished = true;
+				});
+
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+				await globalAgenda.now('drain-long-job');
+
+				// wait until the job has been picked up
+				await delay(150);
+
+				await globalAgenda.drain();
+
+				expect(jobFinished).to.be.true;
+				expect(globalAgenda.isActiveJobProcessor()).to.be.false;
+			}).timeout(10000);
+
+			it('does not start new jobs after drain is called', async () => {
+				let execCount = 0;
+
+				globalAgenda.define('drain-new-job', async _job => {
+					execCount++;
+				});
+
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+
+				// drain before any job is queued
+				await globalAgenda.drain();
+
+				// schedule a job after drain — it should not run
+				await globalAgenda.now('drain-new-job');
+				await delay(300);
+
+				expect(execCount).to.equal(0);
+			}).timeout(10000);
+
+			it('returns immediately without waiting if stop() was called before drain()', async () => {
+				let jobFinished = false;
+
+				globalAgenda.define('drain-after-stop-job', async _job => {
+					await new Promise<void>(resolve => setTimeout(resolve, 500));
+					jobFinished = true;
+				});
+
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+				await globalAgenda.now('drain-after-stop-job');
+
+				// wait until job is picked up
+				await delay(150);
+
+				await globalAgenda.stop();
+				expect(globalAgenda.isActiveJobProcessor()).to.be.false;
+
+				// drain should be a no-op since jobProcessor is already gone
+				const drainStart = Date.now();
+				await globalAgenda.drain();
+				const drainDuration = Date.now() - drainStart;
+
+				// drain returned immediately (did not wait the 500ms job duration)
+				expect(drainDuration).to.be.lessThan(200);
+				expect(jobFinished).to.be.false;
+			}).timeout(10000);
+		});
 	});
 });

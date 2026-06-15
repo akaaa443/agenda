@@ -542,6 +542,26 @@ export class Agenda extends EventEmitter {
 	}
 
 	/**
+	 * Gracefully shuts down Agenda:
+	 * 1. Stops accepting new jobs
+	 * 2. Waits for all currently running jobs to finish
+	 * 3. Calls stop() to unlock remaining locked jobs and clean up
+	 *
+	 * WARNING: do not call stop() before drain(). stop() immediately tears down
+	 * the job processor and sets it to undefined, so drain() will return early
+	 * without waiting for any in-flight jobs to finish.
+	 */
+	async drain(): Promise<void> {
+		log('Agenda.drain called, waiting for running jobs to finish');
+		if (!this.jobProcessor) {
+			log('Agenda.drain called, but agenda is not running');
+			return;
+		}
+		await this.jobProcessor.drain();
+		await this.stop();
+	}
+
+	/**
 	 * Clear the interval that processes the jobs and unlocks all currently locked jobs
 	 */
 	async stop(): Promise<void> {
