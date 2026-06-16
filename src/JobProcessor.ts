@@ -118,6 +118,42 @@ export class JobProcessor {
 		return this.lockedJobs;
 	}
 
+	stopAcceptingJobs(): void {
+		log.extend('stopAcceptingJobs')('stopping job pickup, isRunning: %s', this.isRunning);
+		this.isRunning = false;
+
+		if (this.processInterval) {
+			clearInterval(this.processInterval);
+			this.processInterval = undefined;
+		}
+	}
+
+	async waitForRunningJobsToFinish(): Promise<void> {
+		log.extend('waitForRunningJobsToFinish')(
+			'waiting for %d running jobs to finish',
+			this.runningJobs.length
+		);
+
+		await new Promise<void>(resolve => {
+			if (this.runningJobs.length === 0) {
+				resolve();
+				return;
+			}
+			const interval = setInterval(() => {
+				log.extend('waitForRunningJobsToFinish')(
+					'%d running jobs remaining',
+					this.runningJobs.length
+				);
+				if (this.runningJobs.length === 0) {
+					clearInterval(interval);
+					resolve();
+				}
+			}, 100);
+		});
+
+		log.extend('waitForRunningJobsToFinish')('all running jobs finished');
+	}
+
 	async drain(): Promise<void> {
 		log.extend('drain')('draining, waiting for %d running jobs to finish', this.runningJobs.length);
 		this.isRunning = false;
@@ -127,19 +163,7 @@ export class JobProcessor {
 			this.processInterval = undefined;
 		}
 
-		await new Promise<void>(resolve => {
-			if (this.runningJobs.length === 0) {
-				resolve();
-				return;
-			}
-			const interval = setInterval(() => {
-				log.extend('drain')('%d running jobs remaining', this.runningJobs.length);
-				if (this.runningJobs.length === 0) {
-					clearInterval(interval);
-					resolve();
-				}
-			}, 100);
-		});
+		await this.waitForRunningJobsToFinish();
 
 		log.extend('drain')('all running jobs finished');
 	}

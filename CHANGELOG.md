@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.5.0](https://github.com/hokify/agenda/compare/v6.4.0...v6.5.0) (2026-06-16)
+
+
+### Features
+
+* add `stopAcceptingJobs()` to immediately halt new job pickup without tearing down the processor — designed for NestJS `onModuleDestroy()` two-phase shutdown
+* add `waitForRunningJobsToFinish()` to wait for all in-flight jobs to complete while keeping the processor alive
+* refactor `drain()` to reuse `waitForRunningJobsToFinish()` internally
+
+
 ## [6.4.0](https://github.com/hokify/agenda/compare/v6.3.0...v6.4.0) (2026-06-15)
 
 

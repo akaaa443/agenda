@@ -542,6 +542,36 @@ export class Agenda extends EventEmitter {
 	}
 
 	/**
+	 * Waits for all currently running jobs to finish without stopping the processor.
+	 * Unlike drain(), the agenda keeps running and will continue to pick up new jobs.
+	 */
+	async waitForRunningJobsToFinish(): Promise<void> {
+		log('Agenda.waitForRunningJobsToFinish called');
+		if (!this.jobProcessor) {
+			log('Agenda.waitForRunningJobsToFinish called, but agenda is not running');
+			return;
+		}
+		await this.jobProcessor.waitForRunningJobsToFinish();
+	}
+
+	/**
+	 * Stops the job processor from picking up new jobs immediately, without waiting
+	 * for currently running jobs to finish and without tearing down the processor.
+	 *
+	 * Designed for two-phase NestJS shutdown:
+	 *   onModuleDestroy()        → agenda.stopAcceptingJobs()  (no new jobs picked up)
+	 *   onApplicationShutdown()  → agenda.drain()              (wait for in-flight, then clean up)
+	 */
+	stopAcceptingJobs(): void {
+		log('Agenda.stopAcceptingJobs called');
+		if (!this.jobProcessor) {
+			log('Agenda.stopAcceptingJobs called, but agenda is not running');
+			return;
+		}
+		this.jobProcessor.stopAcceptingJobs();
+	}
+
+	/**
 	 * Gracefully shuts down Agenda:
 	 * 1. Stops accepting new jobs
 	 * 2. Waits for all currently running jobs to finish

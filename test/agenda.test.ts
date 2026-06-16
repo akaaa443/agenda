@@ -866,5 +866,157 @@ describe('Agenda', () => {
 				expect(jobFinished).to.be.false;
 			}).timeout(10000);
 		});
+
+		describe('waitForRunningJobsToFinish', () => {
+			it('does nothing if agenda is not running', async () => {
+				const agenda = new Agenda({ mongo: mongoDb });
+				await agenda.ready;
+				expect(agenda.isActiveJobProcessor()).to.be.false;
+				await agenda.waitForRunningJobsToFinish(); // should not throw
+				expect(agenda.isActiveJobProcessor()).to.be.false;
+			});
+
+			it('keeps the job processor running after resolving', async () => {
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+				expect(globalAgenda.isActiveJobProcessor()).to.be.true;
+
+				await globalAgenda.waitForRunningJobsToFinish();
+
+				expect(globalAgenda.isActiveJobProcessor()).to.be.true;
+			});
+
+			it('waits for a running job to finish before resolving', async () => {
+				let jobFinished = false;
+
+				globalAgenda.define('wait-long-job', async _job => {
+					await new Promise<void>(resolve => setTimeout(resolve, 300));
+					jobFinished = true;
+				});
+
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+				await globalAgenda.now('wait-long-job');
+
+				// wait until the job has been picked up
+				await delay(150);
+
+				await globalAgenda.waitForRunningJobsToFinish();
+
+				expect(jobFinished).to.be.true;
+				expect(globalAgenda.isActiveJobProcessor()).to.be.true;
+			}).timeout(10000);
+
+			it('continues processing new jobs after resolving', async () => {
+				let execCount = 0;
+
+				globalAgenda.define('wait-then-run-job', async _job => {
+					execCount++;
+				});
+
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+
+				await globalAgenda.waitForRunningJobsToFinish();
+
+				// agenda is still running — new job should be processed
+				await globalAgenda.now('wait-then-run-job');
+				await delay(500);
+
+				expect(execCount).to.equal(1);
+			}).timeout(10000);
+		});
+
+		describe('stopAcceptingJobs', () => {
+			it('does nothing if agenda is not running', async () => {
+				const agenda = new Agenda({ mongo: mongoDb });
+				await agenda.ready;
+				expect(agenda.isActiveJobProcessor()).to.be.false;
+				agenda.stopAcceptingJobs(); // should not throw
+				expect(agenda.isActiveJobProcessor()).to.be.false;
+			});
+
+			it('keeps the job processor alive (isActiveJobProcessor stays true)', async () => {
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+
+				globalAgenda.stopAcceptingJobs();
+
+				expect(globalAgenda.isActiveJobProcessor()).to.be.true;
+			});
+
+			it('does not pick up new jobs after being called', async () => {
+				let execCount = 0;
+
+				globalAgenda.define('stop-accepting-job', async _job => {
+					execCount++;
+				});
+
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+
+				globalAgenda.stopAcceptingJobs();
+
+				await globalAgenda.now('stop-accepting-job');
+				await delay(400);
+
+				expect(execCount).to.equal(0);
+			}).timeout(10000);
+
+			it('job scheduled via now() after stopAcceptingJobs() is saved to DB but not executed', async () => {
+				let execCount = 0;
+
+				globalAgenda.define('stop-then-now-job', async _job => {
+					execCount++;
+				});
+
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+
+				globalAgenda.stopAcceptingJobs();
+
+				// now() saves to DB and emits processJob event — but isRunning=false so it's dropped
+				const job = await globalAgenda.now('stop-then-now-job');
+				await delay(400);
+
+				// job was persisted
+				expect(job.attrs._id).to.exist;
+				// but never executed
+				expect(execCount).to.equal(0);
+			}).timeout(10000);
+
+			it('two-phase shutdown: stops new jobs early, drain waits for in-flight jobs', async () => {
+				let jobFinished = false;
+				let newJobRan = false;
+
+				globalAgenda.define('in-flight-job', async _job => {
+					await new Promise<void>(resolve => setTimeout(resolve, 300));
+					jobFinished = true;
+				});
+				globalAgenda.define('new-job-after-stop', async _job => {
+					newJobRan = true;
+				});
+
+				globalAgenda.processEvery(100);
+				await globalAgenda.start();
+				await globalAgenda.now('in-flight-job');
+
+				// wait until in-flight job is picked up
+				await delay(150);
+
+				// phase 1: stop accepting new jobs immediately (simulate onModuleDestroy)
+				globalAgenda.stopAcceptingJobs();
+
+				// new jobs scheduled now should not run
+				await globalAgenda.now('new-job-after-stop');
+
+				// phase 2: wait for in-flight jobs then clean up (simulate onApplicationShutdown)
+				await globalAgenda.drain();
+
+				expect(jobFinished).to.be.true;
+				expect(newJobRan).to.be.false;
+				expect(globalAgenda.isActiveJobProcessor()).to.be.false;
+			}).timeout(10000);
+		});
 	});
 });
